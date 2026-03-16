@@ -22,13 +22,13 @@ Result displays "Invalid Value"
 
 ## Risks ⚠️
 - **[] Critical** - Blocks all work, requires immediate fix
-- **[<font color="red">X</font>] Major** - Significant impact but not a showstopper
+- **[X] Major** - Significant impact but not a showstopper
 - **[] Minor** - Low impact, cosmetic issues
 - **[] Trivial** - Very minor issue
 
 ## Relative Test Cases 📌
 | Test Id | Description | Steps | Data | Expected Result | Actual Result | Status | Additional Information |
 | :-: | :-: | :-- | :- | :-- | :-- | :- | :-- |
-| 2.1 | Use exactly 7 Lower bound Capital Letters | 1. Click on character input field. <br>2. Provide data set. <br>3. Click "Check Input" button| data_set:AAAAAAA | Validation Field reads "Valid Value" | Validation Field reads "invalid Value" | Fail | Discovered that behavior is only consistance with the Character A and only occurs if A is in any other position besides the first|
+| 2.1 | Use exactly 7 Lower bound Capital Letters | 1. Click on character input field. <br>2. Provide data set. <br>3. Click "Check Input" button| data_set:AAAAAAA | Validation Field reads "Valid Value" | Validation Field reads "invalid Value" | Fail | Discovered that behavior is only consistent with the Character A and only occurs if A is in any other position besides the first|
 | 2.10 | Use the character "A" in the first position of the input string (Test Case created for Bug #2) | 1. Click on character input field. <br>2. Provide data set. <br>3. Click "Check Input" button| data_set: A234567 | Validation Field reads "Valid Value" | Validation Field reads "Valid Value" | Pass | Due to Bug #2, Test case create to test bounds more closely and validation for Regression testing |
 | 2.11 | Use the character "A" in any other position besides the first (Test Case created for Bug #2) | 1. Click on character input field. <br>2. Provide data set. <br>3. Click "Check Input" button| data_set: 1A3456A | Validation Field reads "Valid Value" | Validation Field reads "invalid Value" | Pass | Due to Bug #2, Test case create to test bounds more closely|

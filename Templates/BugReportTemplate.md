@@ -29,7 +29,7 @@
 **If you have an idea of how to fix the bug, describe it here:**
 
 ## Risks ⚠️
-- **[<font color="red">X</font>] Critical** - Blocks all work, requires immediate fix
+- **[X] Critical** - Blocks all work, requires immediate fix
 - **[] Major** - Significant impact but not a showstopper
 - **[] Minor** - Low impact, cosmetic issues
 - **[] Trivial** - Very minor issue
