@@ -120,7 +120,7 @@ test.describe('Add Contact', () => {
             const contact = contacts[i];
             console.log(`${contact.firstName} ${contact.lastName} : ${i}`);
             const row = list.nth(i);
-            await page.pause();
+            // await page.pause();
             await expect(row.getByRole('cell', { name: `${contact.firstName} ${contact.lastName}` })).toBeVisible();
         }
         await DeleteUser(context);
@@ -210,7 +210,9 @@ test.describe('Modify Contact', () => {
         await DeleteUser(context);
     });
     const validCases = [
-        { case: "modify contact with valid fields different from current values", data: {} },
+        { case: "modify contact with valid fields different from current values", 
+            data: {} 
+        },
         {
             case: "modify contact by removal of optional fields ensure no errors and changes properly",
             data: {
@@ -228,7 +230,7 @@ test.describe('Modify Contact', () => {
         
     ]
     validCases.forEach((testcase) => {
-        test.only(testcase.case, async ({ page }) => {
+        test(testcase.case, async ({ page }) => {
             //predefined data
             const data = {
                 firstName: 'Brock',
@@ -341,7 +343,7 @@ test.describe('Modify Contact', () => {
         },
     ]
     invalidCases.forEach((testcase) => {
-        test.only(testcase.case, async ({ page }) => {
+        test(testcase.case, async ({ page }) => {
             const data = {
                 firstName: 'Brock',
                 lastName: 'Lee',
@@ -388,7 +390,53 @@ test.describe('Modify Contact', () => {
             await expect(error).toContainText(testcase.error);
         });
     });
-    // test('modify one of multiple contacts and see if only that contact is modified in contact list', async ({ page, context, request }) => { });
+    test.only('modify one of multiple contacts and see if only that contact is modified in contact list', async ({ page }) => { 
+        const contacts = [
+            {
+                firstName: 'Alice',
+                lastName: 'Smith',
+            },
+            {
+                firstName: 'Bob',
+                lastName: 'Johnson',
+            },
+            {
+                firstName: 'Charles',
+                lastName: 'Anderson',
+            }
+        ];
+        for (const contact of contacts) {
+            await addContact(page, contact);
+        }
+        let list = await page.locator('.contacts').locator('tr.contactTableBodyRow');
+        await expect(list).toHaveCount(contacts.length);
+        //sort data by last name to match the order in the contact list
+        contacts.sort((a, b) => a.lastName.localeCompare(b.lastName));
+        for(let i = 0; i < contacts.length; i++) {
+            let id = await list.nth(i).locator('td').first().innerText();
+            await expect(list.nth(i).getByRole('cell', { name: `${contacts[i].firstName} ${contacts[i].lastName}` })).toBeVisible();
+            contacts[i].id = id;
+            console.log("id: " + id);
+        }
+        await page.getByRole('cell', { name: 'Bob Johnson' }).click();
+        await page.getByRole('button', { name: 'Edit Contact' }).click();
+        //grab each contact and get id to ensure the same contact is being modified then click to details page then edit page
+        //modify the second contact (Bob Johnson) and change his name to Robert Johnson
+        const modifiedContact = {
+            firstName: 'Robert',
+            lastName: 'Johnson',
+        };
+        await expect(page.locator('#firstName')).not.toHaveValue('');
+        await page.locator('#firstName').fill(modifiedContact.firstName);
+        await page.locator('#lastName').fill(modifiedContact.lastName);
+        await page.getByRole('button', { name: 'Submit' }).click();
+        await page.getByRole('button', { name: 'Return to Contact List' }).click();
+        //check if the modified contact is updated in the contact list and that the other contacts are unchanged
+        let updatedContact = page.locator("tr.contactTableBodyRow").filter({ has: page.getByRole('cell', { name: 'Robert Johnson' }) });
+        await expect(await updatedContact.locator('td').first().innerText()).toBe(contacts.find(c => c.firstName === 'Bob' && c.lastName === 'Johnson').id);
+        // add checks that other contacts are left unchanged
+        // add check to make sure sorting changes correctly with modified contact
+    });
     // test cancel edit and ensure no changes are made
 });
 // 69b45619ed7f8200150d3579
