@@ -250,7 +250,7 @@ test.describe('Modify Contact', () => {
             // Click on the contact we just added to go to the contact details page, then click the edit button to go to the edit page
             await page.locator('.contactTable').locator('nth=-1').click();
             await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/contactDetails");
-            //click edit andd assure we are on edit page
+            //click edit and assure we are on edit page
             await page.getByRole('button', { name: 'Edit Contact' }).click();
             await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/editContact");
 
@@ -418,26 +418,43 @@ test.describe('Modify Contact', () => {
             contacts[i].id = id;
             console.log("id: " + id);
         }
-        await page.getByRole('cell', { name: 'Bob Johnson' }).click();
+        // choose random contact
+        const randomIndex = Math.floor(Math.random() * contacts.length);
+        const oldContact = contacts[randomIndex];
+        // temp swap
+        await page.getByRole('cell', {name: `${oldContact.firstName} ${oldContact.lastName}`}).click();
         await page.getByRole('button', { name: 'Edit Contact' }).click();
         //grab each contact and get id to ensure the same contact is being modified then click to details page then edit page
         //modify the second contact (Bob Johnson) and change his name to Robert Johnson
         const modifiedContact = {
             firstName: 'Robert',
             lastName: 'Johnson',
+            ...oldContact
         };
         await expect(page.locator('#firstName')).not.toHaveValue('');
         await page.locator('#firstName').fill(modifiedContact.firstName);
         await page.locator('#lastName').fill(modifiedContact.lastName);
         await page.getByRole('button', { name: 'Submit' }).click();
         await page.getByRole('button', { name: 'Return to Contact List' }).click();
+        //replace data to match expected
+        contacts[randomIndex] = modifiedContact;
         //check if the modified contact is updated in the contact list and that the other contacts are unchanged
-        let updatedContact = page.locator("tr.contactTableBodyRow").filter({ has: page.getByRole('cell', { name: 'Robert Johnson' }) });
-        await expect(await updatedContact.locator('td').first().innerText()).toBe(contacts.find(c => c.firstName === 'Bob' && c.lastName === 'Johnson').id);
-        // add checks that other contacts are left unchanged
-        // add check to make sure sorting changes correctly with modified contact
+
+        //get contact list items
+        list = page.locator('.contacts').locator('tr.contactTableBodyRow');
+        //sort contacts to ensure order is matched 
+        contacts.sort((a, b) => a.lastName.localeCompare(b.lastName));
+        //loop to get id and check that it matches with the old idd ensuring nothing was touched besides the changed value
+        for(let i = 0; i < contacts.length; i++) {
+            let id = await list.nth(i).locator('td').first().innerText();
+            await expect(list.nth(i).getByRole('cell', { name: `${contacts[i].firstName} ${contacts[i].lastName}` })).toBeVisible();
+            expect(contacts[i].id).toBe(id);
+        }
     });
     // test cancel edit and ensure no changes are made
+    test('', async ({page}) => {
+
+    });
 });
 // 69b45619ed7f8200150d3579
 // 69b45619ed7f8200150d3579
