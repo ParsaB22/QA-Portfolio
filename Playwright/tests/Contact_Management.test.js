@@ -307,7 +307,6 @@ test.describe('Modify Contact', () => {
                     index -= 1;
                 }
                 let val = await cells.nth(index).innerText();
-                console.log("index:" + index + " = " + val);
                 expect(val).toContain(newData[key]);
                 index++;
             }
@@ -390,7 +389,7 @@ test.describe('Modify Contact', () => {
             await expect(error).toContainText(testcase.error);
         });
     });
-    test.only('modify one of multiple contacts and see if only that contact is modified in contact list', async ({ page }) => { 
+    test('modify one of multiple contacts and see if only that contact is modified in contact list', async ({ page }) => { 
         const contacts = [
             {
                 firstName: 'Alice',
@@ -452,12 +451,92 @@ test.describe('Modify Contact', () => {
         }
     });
     // test cancel edit and ensure no changes are made
-    test('', async ({page}) => {
-
+    test.only('Cancel Edit to ensure no changes are made', async ({ page }) => {
+        const data = {
+                firstName: 'Brock',
+                lastName: 'Lee',
+                birthdate: '1990-01-01',
+                email: 'brock.lee@example.com',
+                phone: '1234567890',
+                street1: '123 Main St',
+                street2: 'Apt 4B',
+                city: 'Anytown',
+                stateProvince: 'Florida',
+                postalCode: '12345',
+                country: 'USA'
+            }
+            //create contact
+        await addContact(page, data);
+        await page.locator('.contactTable').locator('nth=-1').click();
+                    await page.getByRole('button', { name: 'Edit Contact' }).click();
+        const newData = {
+                firstName: 'John',
+                lastName: 'Doe',
+                birthdate: '1985-05-15',
+                email: 'john.doe@example.com',
+                phone: '0987654321',
+                street1: '456 Oak Ave',
+                street2: 'Suite 2C',
+                city: 'Somewhere',
+                stateProvince: 'California',
+                postalCode: '67890',
+                country: 'Canada',
+        };
+        await expect(page.locator('#firstName')).not.toHaveValue('');
+            //fill in data into respective fields
+        for (const [key, value] of Object.entries(newData)) {
+            const input = page.locator(`#${key}`);
+            await expect(input).toBeVisible();
+            await input.fill(value);
+        }
+        //submit
+        await page.getByRole('button', { name: 'Cancel' }).click();
+        for (const key of Object.keys(data)) {
+            const value = page.locator(`#${key}`);
+            if (data[key] === '') {
+                await expect(value).not.toBeVisible();
+            }
+            else {
+                await expect(value).toBeVisible();
+            }
+            await expect(value).toHaveText(data[key]);
+        }
+        //go baack to full contact list
+        await page.getByRole('button', { name: 'Return to Contact List' }).click();
+        //get the only contact in list which will ensure that its the one we edited
+        let updatedContact = page.locator('.contactTable').locator('nth=-1');
+        //check if updated values are persistent in contact list
+        await expect(updatedContact).toBeVisible();
+        let index = 0;
+        let cells = page.getByRole('cell');
+        for (const key of Object.keys(data)) {
+            // console.log(`Checking if ${key} with value ${data[key]} is visible in the new contact...`);
+            //index back if the field shares cell
+            if (key === "lastName" || key === "street2" || key === "stateProvince" || key === "postalCode") {
+                index -= 1;
+            }
+            let val = await cells.nth(index).innerText();
+            expect(val).toContain(data[key]);
+            index++;
+        }
     });
 });
-// 69b45619ed7f8200150d3579
-// 69b45619ed7f8200150d3579
 // --delete contact and see if it is removed from contact list
+// -- cancel delete
 // --delete one of multiple contacts and see if only that contact is removed from contact list
-test.describe('Delete Contact', () => { });
+test.describe('Delete Contact', () => { 
+    const creds = {
+            email: "parsabaghaie@example.com",
+            password: "password123"
+        }
+    test.beforeEach(async ({ page, request }) => {
+        await RegisterAPI(request);
+        await Login(page, creds);
+    });
+    test.afterEach(async ({ context }) => {
+        await DeleteUser(context);
+    });
+    test('delete contact and see if it is removed from contact list', async ({ page }) => {
+        
+    })
+});
