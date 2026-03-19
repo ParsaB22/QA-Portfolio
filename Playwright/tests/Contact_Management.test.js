@@ -451,7 +451,7 @@ test.describe('Modify Contact', () => {
         }
     });
     // test cancel edit and ensure no changes are made
-    test.only('Cancel Edit to ensure no changes are made', async ({ page }) => {
+    test('Cancel Edit to ensure no changes are made', async ({ page }) => {
         const data = {
                 firstName: 'Brock',
                 lastName: 'Lee',
@@ -468,7 +468,7 @@ test.describe('Modify Contact', () => {
             //create contact
         await addContact(page, data);
         await page.locator('.contactTable').locator('nth=-1').click();
-                    await page.getByRole('button', { name: 'Edit Contact' }).click();
+        await page.getByRole('button', { name: 'Edit Contact' }).click();
         const newData = {
                 firstName: 'John',
                 lastName: 'Doe',
@@ -537,6 +537,121 @@ test.describe('Delete Contact', () => {
         await DeleteUser(context);
     });
     test('delete contact and see if it is removed from contact list', async ({ page }) => {
+        const data = {
+                firstName: 'Brock',
+                lastName: 'Lee',
+                birthdate: '1990-01-01',
+                email: 'brock.lee@example.com',
+                phone: '1234567890',
+                street1: '123 Main St',
+                street2: 'Apt 4B',
+                city: 'Anytown',
+                stateProvince: 'Florida',
+                postalCode: '12345',
+                country: 'USA'
+            }
+            //create contact
+        await addContact(page, data);
+        let id = await page.locator('.contactTable .contactTableBodyRow').locator('nth=-1').locator('td').first().innerText();
+        await page.locator('.contactTable').locator('nth=-1').click();
+        page.on('dialog', async (dialog) => {
+            await dialog.accept();
+        });
+        await page.getByRole('button', { name: 'Delete Contact' }).click();
+        // await page.pause();
+        await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/contactList");
+        //if id is no longer in dom then it is deleted
+        await expect(page.locator('.contactTable td', { hasText: id })).toHaveCount(0);
+    })
+    test('should cancel delete', async ({ page }) => { 
+        const data = {
+                firstName: 'Brock',
+                lastName: 'Lee',
+                birthdate: '1990-01-01',
+                email: 'brock.lee@example.com',
+                phone: '1234567890',
+                street1: '123 Main St',
+                street2: 'Apt 4B',
+                city: 'Anytown',
+                stateProvince: 'Florida',
+                postalCode: '12345',
+                country: 'USA'
+            }
+            //create contact
+        await addContact(page, data);
+        let id = await page.locator('.contactTable .contactTableBodyRow').locator('nth=-1').locator('td').first().innerText();
+        await page.locator('.contactTable').locator('nth=-1').click();
+        page.on('dialog', async (dialog) => {
+            await dialog.dismiss();
+        });
+        await page.getByRole('button', { name: 'Delete Contact' }).click();
+        // await page.pause();
+        await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/contactDetails");
+        await page.getByRole('button', { name: 'Return to Contact List' }).click();
+        // console.log(await page.locator('.contactTable td', { hasText: id }).innerText())
+        await expect(page.locator('.contactTable td', { hasText: id })).toHaveCount(1)
+    })
+    test('should delete one of multiple contacts and see if only that contact is removed from contact list', async ({ page }) => {
+        const data = [
+            {
+                firstName: 'Alice',
+                lastName: 'Smith',
+            },
+            {
+                firstName: 'Charles',
+                lastName: 'Anderson',
+            }
+        ];
+        const toBeDeleted = {
+            firstName: 'Bob',
+            lastName: 'Johnson',
+        }
         
+        for (const contact of [...data, toBeDeleted]) {
+            await addContact(page, contact);
+        }
+        let contactPointer = page.locator(
+            '.contactTable .contactTableBodyRow',
+            {
+                has: page.getByRole(
+                    "cell",
+                    { name: `${toBeDeleted.firstName} ${toBeDeleted.lastName}` }
+                )
+            }
+        )
+        let id = await contactPointer.locator('td').first().innerText();
+        await contactPointer.click()
+        page.on('dialog', async (dialog) => {
+            await dialog.accept();
+        });
+        await page.getByRole('button', { name: 'Delete Contact' }).click();
+        //check by id that it is deleted
+        await expect(page.locator('.contactTable td', { hasText: id })).toHaveCount(0);
+        //check by name that it is deleted which also works unless there are duplicate names 
+        await expect(page.locator(
+            '.contactTable .contactTableBodyRow',
+            {
+                has: page.getByRole(
+                    "cell",
+                    { name: `${toBeDeleted.firstName} ${toBeDeleted.lastName}` }
+                )
+            }
+        )).toHaveCount(0);
+
+        //check that contact list only has data length amount
+        await expect(page.locator('.contactTable .contactTableBodyRow')).toHaveCount(data.length);
+
+        //check that the data on those are no one of the delete ones
+        for (const contact of data) {
+            await expect(page.locator(
+                '.contactTable .contactTableBodyRow',
+                {
+                    has: page.getByRole(
+                        "cell",
+                        { name: `${contact.firstName} ${contact.lastName}` }
+                    )
+                }
+            )).toHaveCount(1);
+        }
     })
 });
