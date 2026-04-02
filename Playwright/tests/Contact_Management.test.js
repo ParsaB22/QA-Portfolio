@@ -1,34 +1,79 @@
-import { test, expect} from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { RegisterAPI, Login, DeleteUser } from "../helper/Login_Register_Delete";
-// --Valid All fields
-// --Valid only First/Last Name empty fields
-// --missing required fields
-// --invalid all optional fields
-// --invalid one field of all
-// --add contact and see if it shows in contact list
-// --add more than one contact and see if contact list displays all
-// --check to see in contact list details are in correct order and formatting
 
+const BASE_URL = 'https://thinking-tester-contact-list.herokuapp.com';
+
+/**
+ * Helper function to add a contact.
+ * It navigates to the add contact page, fills in the provided data, submits the form,
+ * and waits for the redirect back to the contact list.
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object.
+ * @param {Object} data - Contact fields (e.g., firstName, lastName, email, etc.)
+ */
 async function addContact(page, data) {
-    await page.getByRole('button', { name: 'Add a New Contact' }).click();
-    for (const key of Object.keys(data)) {
-        const input = page.locator(`#${key}`);
-        await input.fill(data[key]);
-    }
-    await page.getByRole('button', { name: 'Submit' }).click();
+    await test.step(`Adding Contact: ${data.firstName} ${data.lastName}`, async () => {
+        /*
+            Click "Add a New Contact" and wait for navigation to the /addContact page.
+            Using Promise.all ensures that if navigation starts after the click,
+            Playwright will already be listening for the URL change, preventing race conditions.
+        */
+        await Promise.all([
+            page.getByRole('button', { name: 'Add a New Contact' }).click(),
+            page.waitForURL(`${BASE_URL}/addContact`),
+        ]);
+
+        // Sanity check: verify the form fields are present and empty before filling.
+        const firstnameLocation = await page.locator('#firstName');
+        await expect(firstnameLocation).toBeEditable();
+        await expect(firstnameLocation).toHaveValue('');
+
+        // Dynamically fill all fields provided in the data object.
+        // This allows the helper to work with a subset of fields (e.g., only required ones).
+        for (const [key, value] of Object.entries(data)) {
+            const input = await page.locator(`#${key}`);
+            await input.fill(value);
+        }
+
+        // Submit the form and wait for the redirect back to the contact list page.
+        await Promise.all([
+            page.getByRole('button', { name: 'Submit' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`),
+        ]);
+    });
 }
 
-// ! Polish this function with BeforeEach and AfterEach to make it more efficient and less repetitive, also add more error handling and logging to make it easier to debug if something goes wrong, currently if something goes wrong it just returns without any indication of what went wrong which can make it hard to figure out the issue, also add more comments to explain what each part of the code is doing and why, this will make it easier for other people (or yourself in the future) to understand the code and make changes if needed without having to spend a lot of time trying to figure out what the code is doing
-test.describe('Add Contact', () => {
+//! =====================
+//! ADD CONTACT TESTS
+//! =====================
+test.describe('ADD CONTACT', () => {
+    // Credentials for the test user (used in beforeEach and afterEach).
     const creds = {
-            email: "parsabaghaie@example.com",
-            password: "password123"
-        }
-    test('Valid All fields', async ({ page, context, request }) => { 
-        await RegisterAPI(request);
+        firstName: "Parsa",
+        lastName: "Baghaie",
+        email: "parsabaghaie@example.com",
+        password: "password123"
+    };
+
+    // Before each test: create a new user via API and log them in.
+    test.beforeEach(async ({ page, request }) => {
+        await RegisterAPI(request, creds);
         await Login(page, creds);
-        await page.getByRole('button', { name: 'Add a New Contact' }).click();
-        await expect(page).toHaveURL('https://thinking-tester-contact-list.herokuapp.com/addContact');
+    });
+
+    // After each test: clean up by deleting the user via API.
+    test.afterEach(async ({ context }) => {
+        await DeleteUser(context);
+    });
+
+    test('should create contact when all fields are valid', async ({ page }) => {
+        // 1. Navigate to the "Add Contact" page.
+        await Promise.all([
+            page.getByRole('button', { name: 'Add a New Contact' }).click(),
+            page.waitForURL(`${BASE_URL}/addContact`)
+        ]);
+
+        // 2. Define the full contact data (all optional fields included).
         const data = {
             firstName: 'Brock',
             lastName: 'Lee',
@@ -41,181 +86,290 @@ test.describe('Add Contact', () => {
             stateProvince: 'Florida',
             postalCode: '12345',
             country: 'USA'
-        }
+        };
 
-        for (const key of Object.keys(data)) {
+        // 3. Fill each field by matching the key to the element's id attribute.
+        for (const [key, value] of Object.entries(data)) {
             const input = page.locator(`#${key}`);
             await expect(input).toBeVisible();
-            await input.fill(data[key]);
+            await input.fill(value);
         }
-        
-        await page.getByRole('button', { name: 'Submit' }).click();
-        await expect(page).toHaveURL('https://thinking-tester-contact-list.herokuapp.com/contactList');
-        let newContact = page.locator('.contactTable').locator('nth=-1');
-        for (const key of Object.keys(data)) {
-            // console.log(`Checking if ${key} with value ${data[key]} is visible in the new contact...`);
-            await expect(newContact).toContainText(data[key]);
-            //! Could cause problems if the contact has similar data in other cells, better to combine first/last name, address 1/2, city/state/country into one regex to check for the whole string instead of just one field at a time
-            //! but for now this is good enough to check if the data is showing up in the contact list, just be aware that it could cause errors if there are similar values in other cells
-            let cell = new RegExp(data[key] + '\\b');
-            await expect(page.getByRole('cell', { name: cell })).toBeVisible();
-        }
-        await newContact.click();
-        await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/contactDetails");
-        for (const key of Object.keys(data)) {
-            const value = page.locator(`#${key}`);
-            await expect(value).toBeVisible();
-            await expect(value).toHaveText(data[key]);
-        }
-        await DeleteUser(context);
-    });
-    test('Valid required fields only - First/Last Name', async ({ page, context, request }) => { 
-        await RegisterAPI(request);
-        await Login(page, creds);
-        await page.getByRole('button', { name: 'Add a New Contact' }).click();
-        await expect(page).toHaveURL('https://thinking-tester-contact-list.herokuapp.com/addContact');
 
+        // 4. Submit the form and wait for redirect back to the contact list.
+        await Promise.all([
+            page.getByRole('button', { name: 'Submit' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`)
+        ]);
+
+        // 5. Verify the new contact appears in the table.
+        //    Since we only have one contact, we can grab the first table row.
+        const newContact = page.locator('.contactTable tr.contactTableBodyRow');
+        await expect(newContact).toBeVisible();
+        await expect(newContact).toHaveCount(1);
+
+        // 6. Check that each field appears in the correct table column.
+        //    The table has a fixed column order, but some fields share a column.
+        //    We manually adjust the index for fields that do not occupy a new column.
+        let index = 0;
+        const cells = newContact.getByRole('cell');
+        for (const [key, value] of Object.entries(data)) {
+            // Fields that share a column (e.g., lastName appears in the same cell as firstName)
+            // require us to skip incrementing the index.
+            if (key === "lastName" || key === "street2" || key === "stateProvince" || key === "postalCode") {
+                index -= 1;
+            }
+            const cellValue = await cells.nth(index).innerText();
+            expect(cellValue).toContain(value);
+            index++;
+        }
+
+        // 7. Go to the contact's detail page and verify all fields match.
+        await Promise.all([
+            newContact.click(),
+            page.waitForURL(`${BASE_URL}/contactDetails`)
+        ]);
+        for (const [key, value] of Object.entries(data)) {
+            const pageValue = page.locator(`#${key}`);
+            await expect(pageValue).toBeVisible();
+            await expect(pageValue).toHaveText(value);
+        }
+    });
+
+    test('should create contact when only required fields are provided', async ({ page }) => {
+        // Navigate to the add contact page.
+        await Promise.all([
+            page.getByRole('button', { name: 'Add a New Contact' }).click(),
+            page.waitForURL(`${BASE_URL}/addContact`)
+        ]);
+
+        // Only required fields: firstName and lastName.
         const data = {
             firstName: 'Brock',
             lastName: 'Lee',
-        }
+        };
 
-        for (const key of Object.keys(data)) {
+        // Fill the required fields.
+        for (const [key, value] of Object.entries(data)) {
             const input = page.locator(`#${key}`);
             await expect(input).toBeVisible();
-            await input.fill(data[key]);
+            await input.fill(value);
         }
-        await page.getByRole('button', { name: 'Submit' }).click();
-        await expect(page).toHaveURL('https://thinking-tester-contact-list.herokuapp.com/contactList');
-        let newContact = page.locator('.contactTable').locator('nth=-1');
+
+        // Submit and wait for redirect.
+        await Promise.all([
+            page.getByRole('button', { name: 'Submit' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`)
+        ]);
+
+        // Verify that exactly one contact is displayed and that it shows the full name.
+        const newContact = page.locator('.contactTable tr.contactTableBodyRow');
+        await expect(newContact).toHaveCount(1);
         await expect(newContact.getByRole('cell', { name: `${data.firstName} ${data.lastName}` })).toBeVisible();
-        await DeleteUser(context);
+        // No deeper checks needed because the previous test already verified integrity for optional fields.
     });
-    test('Add multiple contacts and check if they show in contact list', async ({ page, context, request }) => {
-        await RegisterAPI(request);
-        await Login(page, creds);
+
+    test('should add multiple contacts and display them in sorted order', async ({ page }) => {
+        // List of contacts to add (only first and last name, as required).
         const contacts = [
-            {
-                firstName: 'Alice',
-                lastName: 'Smith',
-            },
-            {
-                firstName: 'Bob',
-                lastName: 'Johnson',
-            },
-            {
-                firstName: 'Charles',
-                lastName: 'Anderson',
-            }
-        ]
+            { firstName: 'Alice', lastName: 'Smith' },
+            { firstName: 'Bob', lastName: 'Johnson' },
+            { firstName: 'Charles', lastName: 'Anderson' }
+        ];
+
+        // Add each contact using the helper.
         for (const contact of contacts) {
             await addContact(page, contact);
         }
-        let list = page.locator('.contacts').locator('tr.contactTableBodyRow');
+
+        // Get all rows from the contact table.
+        const list = page.locator('.contactTable tr.contactTableBodyRow');
         await expect(list).toHaveCount(contacts.length);
-        //Contact list on site is sorted by last name so we need to sort our data by last name to match the order in the contact list, if we dont do this then we could get false negatives if the contacts are not showing up in the same order as we added them but they are still there just in a different order, this way we can be sure that we are checking for the correct contact in the correct row
-        //sort data by last name to match the order in the contact list
-        contacts.sort((a, b) => a.lastName.localeCompare(b.lastName));
+
+        /*
+            The contact list on the site is sorted by lastName (and then firstName).
+            To correctly validate the order, we sort our test data the same way.
+            This prevents false negatives if the contacts are displayed in a different order
+            than we added them.
+        */
+        contacts.sort((a, b) => {
+            const lastCompare = a.lastName.localeCompare(b.lastName);
+            if (lastCompare !== 0) return lastCompare;
+            return a.firstName.localeCompare(b.firstName);
+        });
+
+        // Verify that each row contains the expected contact in the correct order.
         for (let i = 0; i < contacts.length; i++) {
             const contact = contacts[i];
-            console.log(`${contact.firstName} ${contact.lastName} : ${i}`);
             const row = list.nth(i);
-            // await page.pause();
             await expect(row.getByRole('cell', { name: `${contact.firstName} ${contact.lastName}` })).toBeVisible();
         }
-        await DeleteUser(context);
     });
-    test('Missing/Invalid required fields', async ({ page, context, request }) => {
-        await RegisterAPI(request);
-        await Login(page, creds);
-        await page.getByRole('button', { name: 'Add a New Contact' }).click();
-        await expect(page).toHaveURL('https://thinking-tester-contact-list.herokuapp.com/addContact');
 
+    test('should not create contact when creation is canceled', async ({ page }) => {
+        const data = {
+            firstName: 'Brock',
+            lastName: 'Lee',
+        };
+
+        // Navigate to add contact page.
+        await page.getByRole('button', { name: 'Add a New Contact' }).click();
+
+        // Fill the fields.
+        for (const [key, value] of Object.entries(data)) {
+            const input = page.locator(`#${key}`);
+            await expect(input).toBeVisible();
+            await input.fill(value);
+        }
+
+        // Click Cancel and wait for redirect to contact list.
+        await Promise.all([
+            page.getByRole('button', { name: 'Cancel' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`)
+        ]);
+
+        // Verify that no contact with the entered name was created.
+        await expect(page.locator(
+            '.contactTable .contactTableBodyRow',
+            {
+                has: page.getByRole(
+                    "cell",
+                    { name: `${data.firstName} ${data.lastName}` }
+                )
+            }
+        )).toHaveCount(0);
+    });
+
+    test('should show validation errors when required fields are missing', async ({ page }) => {
+        // Navigate to add contact page.
+        await Promise.all([
+            page.getByRole('button', { name: 'Add a New Contact' }).click(),
+            page.waitForURL(`${BASE_URL}/addContact`)
+        ]);
+
+        // Only fill optional fields (firstName and lastName are missing on purpose).
         const data = {
             birthdate: '1990-01-01',
             email: 'brock.lee@example.com'
         };
-
-        for (const key of Object.keys(data)) {
+        for (const [key, value] of Object.entries(data)) {
             const input = page.locator(`#${key}`);
             await expect(input).toBeVisible();
-            await input.fill(data[key]);
+            await input.fill(value);
         }
+
+        // Submit and verify we stay on the same page (validation failed).
         await page.getByRole('button', { name: 'Submit' }).click();
-        await expect(page).toHaveURL('https://thinking-tester-contact-list.herokuapp.com/addContact');
-        // Add assertions for missing required fields error messages if applicable
-        let error = page.locator('#error');
+        await expect(page).toHaveURL(`${BASE_URL}/addContact`);
+
+        // Check that error messages mention the missing required fields.
+        const error = page.locator('#error');
         await expect(error).toBeVisible();
         await expect(error).toContainText("Contact validation failed:");
         await expect(error).toContainText("Path `firstName` is required.");
         await expect(error).toContainText("Path `lastName` is required.");
-        //go back to contact page and check nothing was added to the contact list
-        // 
-        // 
-        // 
-        await DeleteUser(context);
+
+        // Navigate back to contact list and verify no contact was added.
+        await Promise.all([
+            page.getByRole('button', { name: 'Cancel' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`)
+        ]);
+        await expect(page.locator('.contactTable .contactTableBodyRow')).toHaveCount(0);
     });
-    let invalidData = [
-        { case: "Invalid email and phone", values: { email: 'invalid-email', phone: 'invalid-phone' }, error: 'email: Email is invalid, phone: Phone number is invalid'},
-    ]
+
+    // Data-driven tests for invalid values in optional fields.
+    const invalidData = [
+        {
+            case: "Email and Phone are invalid",
+            values: { email: 'invalid-email', phone: 'invalid-phone' },
+            error: 'email: Email is invalid, phone: Phone number is invalid'
+        },
+    ];
+
     invalidData.forEach((testcase) => {
-        test(`Invalid optional fields ${JSON.stringify(testcase.case)}`, async ({ page, context, request }) => {
-            await RegisterAPI(request);
-            await Login(page, creds);
-            await page.getByRole('button', { name: 'Add a New Contact' }).click();
+        test(`should show validation error for optional fields when: ${JSON.stringify(testcase.case)}`, async ({ page }) => {
+            // Navigate to add contact page.
+            await Promise.all([
+                page.getByRole('button', { name: 'Add a New Contact' }).click(),
+                page.waitForURL(`${BASE_URL}/addContact`)
+            ]);
+
+            // Build the full data set: required fields are always valid, optional fields come from testcase.
             const data = {
                 firstName: 'John',
                 lastName: 'Doe',
                 ...testcase.values
             };
-            for (const key of Object.keys(data)) {
+
+            // Fill the fields.
+            for (const [key, value] of Object.entries(data)) {
                 const input = page.locator(`#${key}`);
                 await expect(input).toBeVisible();
-                await input.fill(data[key]);
+                await input.fill(value);
             }
+
+            // Submit and expect to stay on the same page due to validation errors.
             await page.getByRole('button', { name: 'Submit' }).click();
-            await expect(page).toHaveURL('https://thinking-tester-contact-list.herokuapp.com/addContact');
-            let error = page.locator('#error');
+            await expect(page).toHaveURL(`${BASE_URL}/addContact`);
+
+            // Verify the error message contains the expected text.
+            const error = page.locator('#error');
             await expect(error).toBeVisible();
             await expect(error).toContainText("Contact validation failed:");
             await expect(error).toContainText(testcase.error);
-            //go back to contact page and check nothing was added to the contact list
-            // 
-            // 
-            // 
-            await DeleteUser(context);
+
+            // Cancel and go back to contact list; ensure no contact was created.
+            await Promise.all([
+                page.getByRole('button', { name: 'Cancel' }).click(),
+                page.waitForURL(`${BASE_URL}/contactList`)
+            ]);
+            await expect(page.locator('.contactTable .contactTableBodyRow')).toHaveCount(0);
         });
     });
-
-    
 });
 
-// -- modify contact with valid fields different from current values
-// -- modify contact by removal of optional fields yet valid first/last cause no errors and changes
-// -- attempt to modify by removing last/first ensuring error
-// -- attempt to modify with invalid all fields ensuring error
-// -- attempt to modify only one invalid field ensuring error
-// -- modify contact and see if changes are reflected in contact list
-// -- modify one of multiple contacts and see if only that contact is modified in contact list
-test.describe('Modify Contact', () => { 
+//! =====================
+//! MODIFY CONTACT TESTS
+//! =====================
+test.describe('MODIFY CONTACT', () => {
     const creds = {
-            email: "parsabaghaie@example.com",
-            password: "password123"
-        }
+        firstName: "Parsa",
+        lastName: "Baghaie",
+        email: "parsabaghaie@example.com",
+        password: "password123"
+    };
+
     test.beforeEach(async ({ page, request }) => {
-        await RegisterAPI(request);
+        await RegisterAPI(request, creds);
         await Login(page, creds);
     });
+
     test.afterEach(async ({ context }) => {
         await DeleteUser(context);
     });
+
+    // Test cases for valid modifications (all values are accepted by the server).
     const validCases = [
-        { case: "modify contact with valid fields different from current values", 
-            data: {} 
+        {
+            case: "providing valid fields different from current values",
+            modify: {
+                firstName: 'John',
+                lastName: 'Doe',
+                birthdate: '1985-05-15',
+                email: 'john.doe@example.com',
+                phone: '0987654321',
+                street1: '456 Oak Ave',
+                street2: 'Suite 2C',
+                city: 'Somewhere',
+                stateProvince: 'California',
+                postalCode: '67890',
+                country: 'Canada',
+            }
         },
         {
-            case: "modify contact by removal of optional fields ensure no errors and changes properly",
-            data: {
+            case: "removing optional fields",
+            modify: {
+                firstName: 'John',
+                lastName: 'Doe',
                 birthdate: '',
                 email: '',
                 phone: '',
@@ -227,11 +381,11 @@ test.describe('Modify Contact', () => {
                 country: '',
             }
         },
-        
-    ]
+    ];
+
     validCases.forEach((testcase) => {
-        test(testcase.case, async ({ page }) => {
-            //predefined data
+        test("should update contact when: " + testcase.case, async ({ page }) => {
+            // 1. Create a base contact with all fields filled.
             const data = {
                 firstName: 'Brock',
                 lastName: 'Lee',
@@ -244,86 +398,178 @@ test.describe('Modify Contact', () => {
                 stateProvince: 'Florida',
                 postalCode: '12345',
                 country: 'USA'
-            }
-            //create contact
-            await addContact(page, data);
-            // Click on the contact we just added to go to the contact details page, then click the edit button to go to the edit page
-            await page.locator('.contactTable').locator('nth=-1').click();
-            await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/contactDetails");
-            //click edit and assure we are on edit page
-            await page.getByRole('button', { name: 'Edit Contact' }).click();
-            await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/editContact");
-
-            //new data we will turn the old data into
-            const newData = {
-                firstName: 'John',
-                lastName: 'Doe',
-                birthdate: '1985-05-15',
-                email: 'john.doe@example.com',
-                phone: '0987654321',
-                street1: '456 Oak Ave',
-                street2: 'Suite 2C',
-                city: 'Somewhere',
-                stateProvince: 'California',
-                postalCode: '67890',
-                country: 'Canada',
-                ...testcase.data
             };
-            // page issues cause page state to delay so this code waits for values to correctly appear then continues
-            //probably due to page logic filling in prevalues when page loads but when the page loads playwright also trys to fill those values at the same time causing problems
+            await addContact(page, data);
+
+            // 2. Click on the contact to open details.
+            await Promise.all([
+                page.locator('.contactTable tr.contactTableBodyRow').click(),
+                page.waitForURL(`${BASE_URL}/contactDetails`)
+            ]);
+
+            // 3. Click Edit to go to the edit page.
+            await Promise.all([
+                page.getByRole('button', { name: 'Edit Contact' }).click(),
+                page.waitForURL(`${BASE_URL}/editContact`)
+            ]);
+
+            /*
+                Important: The edit form is pre‑populated with the contact's existing data.
+                We wait for the firstName field to have a value (i.e., the page has finished
+                rendering the pre‑filled values) before we start typing. This avoids a race
+                condition where Playwright would try to fill while the page is still loading.
+            */
             await expect(page.locator('#firstName')).not.toHaveValue('');
-            //fill in data into respective fields
-            for (const [key, value] of Object.entries(newData)) {
+
+            // 4. Fill the form with the new data (or clear fields if value is empty string).
+            for (const [key, value] of Object.entries(testcase.modify)) {
                 const input = page.locator(`#${key}`);
                 await expect(input).toBeVisible();
                 await input.fill(value);
             }
-            //submit
-            await page.getByRole('button', { name: 'Submit' }).click();
-            await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/contactDetails");
-            //check if updated values are assigned to the right slots
-            for (const key of Object.keys(newData)) {
-                const value = page.locator(`#${key}`);
-                if (newData[key] === '') {
-                    await expect(value).not.toBeVisible();
+
+            // 5. Submit the changes and wait for redirect to the contact details page.
+            await Promise.all([
+                page.getByRole('button', { name: 'Submit' }).click(),
+                page.waitForURL(`${BASE_URL}/contactDetails`)
+            ]);
+
+            // 6. Verify that the details page reflects the updated values.
+            for (const [key, value] of Object.entries(testcase.modify)) {
+                const pageValue = page.locator(`#${key}`);
+                if (value === '') {
+                    // If the field was cleared, it should not be visible (or should be empty).
+                    await expect(pageValue).not.toBeVisible();
+                } else {
+                    await expect(pageValue).toBeVisible();
                 }
-                else {
-                    await expect(value).toBeVisible();
-                }
-                await expect(value).toHaveText(newData[key]);
+                await expect(pageValue).toHaveText(value);
             }
-            //go baack to full contact list
-            await page.getByRole('button', { name: 'Return to Contact List' }).click();
-            //get the only contact in list which will ensure that its the one we edited
-            let updatedContact = page.locator('.contactTable').locator('nth=-1');
-            //check if updated values are persistent in contact list
+
+            // 7. Return to the contact list and verify the updated values in the table.
+            await Promise.all([
+                page.getByRole('button', { name: 'Return to Contact List' }).click(),
+                page.waitForURL(`${BASE_URL}/contactList`)
+            ]);
+
+            const updatedContact = page.locator('.contactTable tr.contactTableBodyRow');
             await expect(updatedContact).toBeVisible();
+            await expect(updatedContact).toHaveCount(1);
+
+            // Check each field in the table, adjusting for columns that share cells.
             let index = 0;
-            let cells = page.getByRole('cell');
-            for (const key of Object.keys(newData)) {
-                // console.log(`Checking if ${key} with value ${data[key]} is visible in the new contact...`);
-                //index back if the field shares cell
+            const cells = updatedContact.getByRole('cell');
+            for (const [key, value] of Object.entries(testcase.modify)) {
                 if (key === "lastName" || key === "street2" || key === "stateProvince" || key === "postalCode") {
                     index -= 1;
                 }
-                let val = await cells.nth(index).innerText();
-                expect(val).toContain(newData[key]);
+                const cellValue = await cells.nth(index).innerText();
+                expect(cellValue).toContain(value);
                 index++;
             }
         });
     });
-    let invalidCases = [
+
+    test('should update only the selected contact without affecting others', async ({ page }) => {
+        // Create three contacts.
+        const contacts = [
+            { firstName: 'Alice', lastName: 'Smith' },
+            { firstName: 'Bob', lastName: 'Johnson' },
+            { firstName: 'Charles', lastName: 'Anderson' }
+        ];
+        for (const contact of contacts) {
+            await addContact(page, contact);
+        }
+
+        // Get all rows and sort them by the same order as the UI (lastName, firstName).
+        let list = page.locator('.contactTable tr.contactTableBodyRow');
+        await expect(list).toHaveCount(contacts.length);
+        contacts.sort((a, b) => {
+            const lastCompare = a.lastName.localeCompare(b.lastName);
+            if (lastCompare !== 0) return lastCompare;
+            return a.firstName.localeCompare(b.firstName);
+        });
+
+        // For each contact, capture its unique ID (the first column in the row).
+        // This ID will help us later to ensure only the modified contact changes.
+        for (let i = 0; i < contacts.length; i++) {
+            const id = await list.nth(i).locator('td').first().innerText();
+            await expect(list.nth(i).getByRole('cell', { name: `${contacts[i].firstName} ${contacts[i].lastName}` })).toBeVisible();
+            contacts[i].id = id;
+        }
+
+        // Pick a random contact to modify.
+        const randomIndex = Math.floor(Math.random() * contacts.length);
+        const oldContact = contacts[randomIndex];
+
+        // Click on the chosen contact to open its details.
+        await Promise.all([
+            page.getByRole('cell', { name: `${oldContact.firstName} ${oldContact.lastName}` }).click(),
+            page.waitForURL(`${BASE_URL}/contactDetails`)
+        ]);
+
+        // Click Edit.
+        await Promise.all([
+            page.getByRole('button', { name: 'Edit Contact' }).click(),
+            page.waitForURL(`${BASE_URL}/editContact`)
+        ]);
+
+        // Define the modifications (only firstName and lastName, keeping the ID unchanged).
+        const modifiedContact = {
+            firstName: 'Robert',
+            lastName: 'Johnson',
+            id: oldContact.id
+        };
+
+        // Wait for the form to be ready, then update the fields.
+        await expect(page.locator('#firstName')).not.toHaveValue('');
+        await page.locator('#firstName').fill(modifiedContact.firstName);
+        await page.locator('#lastName').fill(modifiedContact.lastName);
+
+        // Submit changes and return to contact list.
+        await Promise.all([
+            page.getByRole('button', { name: 'Submit' }).click(),
+            page.waitForURL(`${BASE_URL}/contactDetails`)
+        ]);
+        await Promise.all([
+            page.getByRole('button', { name: 'Return to Contact List' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`)
+        ]);
+
+        // Replace the modified contact in the list with the updated one.
+        contacts[randomIndex] = modifiedContact;
+
+        // Re‑sort the list (the name change might affect sorting order).
+        contacts.sort((a, b) => {
+            const lastCompare = a.lastName.localeCompare(b.lastName);
+            if (lastCompare !== 0) return lastCompare;
+            return a.firstName.localeCompare(b.firstName);
+        });
+
+        // Verify the table now contains the updated contacts, and that each ID is still the same
+        // (meaning only the name fields changed, and other contacts remain untouched).
+        const newList = page.locator('.contactTable tr.contactTableBodyRow');
+        await expect(newList).toHaveCount(contacts.length);
+        for (let i = 0; i < contacts.length; i++) {
+            const id = await newList.nth(i).locator('td').first().innerText();
+            await expect(newList.nth(i).getByRole('cell', { name: `${contacts[i].firstName} ${contacts[i].lastName}` })).toBeVisible();
+            expect(contacts[i].id).toBe(id);
+        }
+    });
+
+    // Test cases for invalid modifications (the server should reject them).
+    const invalidCases = [
         {
-            case: "attempt to modify by removing last/first ensuring error",
-            data: {
+            case: "attempting to modify contact by removing first and last name",
+            modify: {
                 firstName: '',
                 lastName: ''
             },
             error: "lastName: Path `lastName` is required., firstName: Path `firstName` is required."
         },
         {
-            case: "attempt to modify with invalid all fields ensuring error",
-            data: {
+            case: "attempting to modify contact with invalid values for every field",
+            modify: {
                 firstName: '',
                 lastName: '',
                 birthdate: 'invalid-date',
@@ -334,15 +580,17 @@ test.describe('Modify Contact', () => {
             error: "postalCode: Postal code is invalid, phone: Phone number is invalid, email: Email is invalid, birthdate: Birthdate is invalid, lastName: Path `lastName` is required., firstName: Path `firstName` is required."
         },
         {
-            case: "attempt to modify only one invalid field ensuring error",
-            data: {
+            case: "attempting to modify contact with one invalid field (Email)",
+            modify: {
                 email: 'invalid-email'
             },
             error: "email: Email is invalid"
         },
-    ]
+    ];
+
     invalidCases.forEach((testcase) => {
-        test(testcase.case, async ({ page }) => {
+        test("should show validation error when: " + testcase.case, async ({ page }) => {
+            // Create a base contact.
             const data = {
                 firstName: 'Brock',
                 lastName: 'Lee',
@@ -355,262 +603,269 @@ test.describe('Modify Contact', () => {
                 stateProvince: 'Florida',
                 postalCode: '12345',
                 country: 'USA'
-            }
-                //create contact
-            await addContact(page, data);
-            await page.locator('.contactTable').locator('nth=-1').click();
-            await page.getByRole('button', { name: 'Edit Contact' }).click();
-            const newData = {
-                firstName: 'John',
-                lastName: 'Doe',
-                birthdate: '1985-05-15',
-                email: 'john.doe@example.com',
-                phone: '0987654321',
-                street1: '456 Oak Ave',
-                street2: 'Suite 2C',
-                city: 'Somewhere',
-                stateProvince: 'California',
-                postalCode: '67890',
-                country: 'Canada',
-                ...testcase.data
             };
+            await addContact(page, data);
+
+            // Open the contact details and go to edit.
+            await Promise.all([
+                page.locator('.contactTable tr.contactTableBodyRow').click(),
+                page.waitForURL(`${BASE_URL}/contactDetails`)
+            ]);
+            await Promise.all([
+                page.getByRole('button', { name: 'Edit Contact' }).click(),
+                page.waitForURL(`${BASE_URL}/editContact`)
+            ]);
+
+            // Wait for the form to be pre‑filled.
             await expect(page.locator('#firstName')).not.toHaveValue('');
-            //fill in data into respective fields
-            for (const [key, value] of Object.entries(newData)) {
+
+            // Fill the form with the invalid data.
+            for (const [key, value] of Object.entries(testcase.modify)) {
                 const input = page.locator(`#${key}`);
                 await expect(input).toBeVisible();
                 await input.fill(value);
             }
+
+            // Submit and verify we stay on the edit page (validation failed).
             await page.getByRole('button', { name: 'Submit' }).click();
-            await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/editContact");
-            let error = page.locator('#error');
+            await expect(page).toHaveURL(`${BASE_URL}/editContact`);
+
+            // Check that the error message contains the expected text.
+            const error = page.locator('#error');
             await expect(error).toBeVisible();
             await expect(error).toContainText("Validation failed:");
             await expect(error).toContainText(testcase.error);
+
+            // Cancel the edit and verify that no changes were persisted.
+            await Promise.all([
+                page.getByRole('button', { name: 'Cancel' }).click(),
+                page.waitForURL(`${BASE_URL}/contactDetails`)
+            ]);
+            for (const [key, value] of Object.entries(data)) {
+                const pageValue = page.locator(`#${key}`);
+                await expect(pageValue).toHaveText(value);
+            }
         });
     });
-    test('modify one of multiple contacts and see if only that contact is modified in contact list', async ({ page }) => { 
-        const contacts = [
-            {
-                firstName: 'Alice',
-                lastName: 'Smith',
-            },
-            {
-                firstName: 'Bob',
-                lastName: 'Johnson',
-            },
-            {
-                firstName: 'Charles',
-                lastName: 'Anderson',
-            }
-        ];
-        for (const contact of contacts) {
-            await addContact(page, contact);
-        }
-        let list = await page.locator('.contacts').locator('tr.contactTableBodyRow');
-        await expect(list).toHaveCount(contacts.length);
-        //sort data by last name to match the order in the contact list
-        contacts.sort((a, b) => a.lastName.localeCompare(b.lastName));
-        for(let i = 0; i < contacts.length; i++) {
-            let id = await list.nth(i).locator('td').first().innerText();
-            await expect(list.nth(i).getByRole('cell', { name: `${contacts[i].firstName} ${contacts[i].lastName}` })).toBeVisible();
-            contacts[i].id = id;
-            console.log("id: " + id);
-        }
-        // choose random contact
-        const randomIndex = Math.floor(Math.random() * contacts.length);
-        const oldContact = contacts[randomIndex];
-        // temp swap
-        await page.getByRole('cell', {name: `${oldContact.firstName} ${oldContact.lastName}`}).click();
-        await page.getByRole('button', { name: 'Edit Contact' }).click();
-        //grab each contact and get id to ensure the same contact is being modified then click to details page then edit page
-        //modify the second contact (Bob Johnson) and change his name to Robert Johnson
-        const modifiedContact = {
-            firstName: 'Robert',
-            lastName: 'Johnson',
-            ...oldContact
-        };
-        await expect(page.locator('#firstName')).not.toHaveValue('');
-        await page.locator('#firstName').fill(modifiedContact.firstName);
-        await page.locator('#lastName').fill(modifiedContact.lastName);
-        await page.getByRole('button', { name: 'Submit' }).click();
-        await page.getByRole('button', { name: 'Return to Contact List' }).click();
-        //replace data to match expected
-        contacts[randomIndex] = modifiedContact;
-        //check if the modified contact is updated in the contact list and that the other contacts are unchanged
 
-        //get contact list items
-        list = page.locator('.contacts').locator('tr.contactTableBodyRow');
-        //sort contacts to ensure order is matched 
-        contacts.sort((a, b) => a.lastName.localeCompare(b.lastName));
-        //loop to get id and check that it matches with the old idd ensuring nothing was touched besides the changed value
-        for(let i = 0; i < contacts.length; i++) {
-            let id = await list.nth(i).locator('td').first().innerText();
-            await expect(list.nth(i).getByRole('cell', { name: `${contacts[i].firstName} ${contacts[i].lastName}` })).toBeVisible();
-            expect(contacts[i].id).toBe(id);
-        }
-    });
-    // test cancel edit and ensure no changes are made
-    test('Cancel Edit to ensure no changes are made', async ({ page }) => {
+    test('should not update contact when edit is canceled', async ({ page }) => {
+        // Original contact data (baseline to compare after cancellation).
         const data = {
-                firstName: 'Brock',
-                lastName: 'Lee',
-                birthdate: '1990-01-01',
-                email: 'brock.lee@example.com',
-                phone: '1234567890',
-                street1: '123 Main St',
-                street2: 'Apt 4B',
-                city: 'Anytown',
-                stateProvince: 'Florida',
-                postalCode: '12345',
-                country: 'USA'
-            }
-            //create contact
-        await addContact(page, data);
-        await page.locator('.contactTable').locator('nth=-1').click();
-        await page.getByRole('button', { name: 'Edit Contact' }).click();
-        const newData = {
-                firstName: 'John',
-                lastName: 'Doe',
-                birthdate: '1985-05-15',
-                email: 'john.doe@example.com',
-                phone: '0987654321',
-                street1: '456 Oak Ave',
-                street2: 'Suite 2C',
-                city: 'Somewhere',
-                stateProvince: 'California',
-                postalCode: '67890',
-                country: 'Canada',
+            firstName: 'Brock',
+            lastName: 'Lee',
+            birthdate: '1990-01-01',
+            email: 'brock.lee@example.com',
+            phone: '1234567890',
+            street1: '123 Main St',
+            street2: 'Apt 4B',
+            city: 'Anytown',
+            stateProvince: 'Florida',
+            postalCode: '12345',
+            country: 'USA'
         };
+
+        // Create the contact.
+        await addContact(page, data);
+
+        // Open the contact details and go to edit.
+        await Promise.all([
+            page.locator('.contactTable tr.contactTableBodyRow').click(),
+            page.waitForURL(`${BASE_URL}/contactDetails`)
+        ]);
+        await Promise.all([
+            page.getByRole('button', { name: 'Edit Contact' }).click(),
+            page.waitForURL(`${BASE_URL}/editContact`)
+        ]);
+
+        // New values we would apply but then cancel.
+        const newData = {
+            firstName: 'John',
+            lastName: 'Doe',
+            birthdate: '1985-05-15',
+            email: 'john.doe@example.com',
+            phone: '0987654321',
+            street1: '456 Oak Ave',
+            street2: 'Suite 2C',
+            city: 'Somewhere',
+            stateProvince: 'California',
+            postalCode: '67890',
+            country: 'Canada',
+        };
+
+        // Wait for the form to be pre‑filled.
         await expect(page.locator('#firstName')).not.toHaveValue('');
-            //fill in data into respective fields
+
+        // Fill the form with the new data.
         for (const [key, value] of Object.entries(newData)) {
             const input = page.locator(`#${key}`);
             await expect(input).toBeVisible();
             await input.fill(value);
         }
-        //submit
-        await page.getByRole('button', { name: 'Cancel' }).click();
-        for (const key of Object.keys(data)) {
-            const value = page.locator(`#${key}`);
-            if (data[key] === '') {
-                await expect(value).not.toBeVisible();
+
+        // Cancel the edit – this should discard all changes.
+        await Promise.all([
+            page.getByRole('button', { name: 'Cancel' }).click(),
+            page.waitForURL(`${BASE_URL}/contactDetails`)
+        ]);
+
+        // Verify that the contact details still show the original data.
+        for (const [key, value] of Object.entries(data)) {
+            const pageValue = page.locator(`#${key}`);
+            if (value === '') {
+                await expect(pageValue).not.toBeVisible();
+            } else {
+                await expect(pageValue).toBeVisible();
             }
-            else {
-                await expect(value).toBeVisible();
-            }
-            await expect(value).toHaveText(data[key]);
+            await expect(pageValue).toHaveText(value);
         }
-        //go baack to full contact list
-        await page.getByRole('button', { name: 'Return to Contact List' }).click();
-        //get the only contact in list which will ensure that its the one we edited
-        let updatedContact = page.locator('.contactTable').locator('nth=-1');
-        //check if updated values are persistent in contact list
+
+        // Return to contact list and verify the table still contains the original data.
+        await Promise.all([
+            page.getByRole('button', { name: 'Return to Contact List' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`)
+        ]);
+
+        const updatedContact = page.locator('.contactTable tr.contactTableBodyRow');
         await expect(updatedContact).toBeVisible();
+
         let index = 0;
-        let cells = page.getByRole('cell');
-        for (const key of Object.keys(data)) {
-            // console.log(`Checking if ${key} with value ${data[key]} is visible in the new contact...`);
-            //index back if the field shares cell
+        const cells = updatedContact.getByRole('cell');
+        for (const [key, value] of Object.entries(data)) {
             if (key === "lastName" || key === "street2" || key === "stateProvince" || key === "postalCode") {
                 index -= 1;
             }
-            let val = await cells.nth(index).innerText();
-            expect(val).toContain(data[key]);
+            const cellValue = await cells.nth(index).innerText();
+            expect(cellValue).toContain(value);
             index++;
         }
     });
 });
-// --delete contact and see if it is removed from contact list
-// -- cancel delete
-// --delete one of multiple contacts and see if only that contact is removed from contact list
-test.describe('Delete Contact', () => { 
+
+//! =====================
+//! DELETE CONTACT TESTS
+//! =====================
+test.describe('DELETE CONTACT', () => {
     const creds = {
-            email: "parsabaghaie@example.com",
-            password: "password123"
-        }
+        firstName: "Parsa",
+        lastName: "Baghaie",
+        email: "parsabaghaie@example.com",
+        password: "password123"
+    };
+
     test.beforeEach(async ({ page, request }) => {
-        await RegisterAPI(request);
+        await RegisterAPI(request, creds);
         await Login(page, creds);
     });
+
     test.afterEach(async ({ context }) => {
         await DeleteUser(context);
     });
-    test('delete contact and see if it is removed from contact list', async ({ page }) => {
+
+    test('should delete contact and remove it from contact list', async ({ page }) => {
+        // Create a contact.
         const data = {
-                firstName: 'Brock',
-                lastName: 'Lee',
-                birthdate: '1990-01-01',
-                email: 'brock.lee@example.com',
-                phone: '1234567890',
-                street1: '123 Main St',
-                street2: 'Apt 4B',
-                city: 'Anytown',
-                stateProvince: 'Florida',
-                postalCode: '12345',
-                country: 'USA'
-            }
-            //create contact
+            firstName: 'Brock',
+            lastName: 'Lee',
+            birthdate: '1990-01-01',
+            email: 'brock.lee@example.com',
+            phone: '1234567890',
+            street1: '123 Main St',
+            street2: 'Apt 4B',
+            city: 'Anytown',
+            stateProvince: 'Florida',
+            postalCode: '12345',
+            country: 'USA'
+        };
         await addContact(page, data);
-        let id = await page.locator('.contactTable .contactTableBodyRow').locator('nth=-1').locator('td').first().innerText();
-        await page.locator('.contactTable').locator('nth=-1').click();
+
+        // Capture its unique ID (first column) to reliably identify it after deletion.
+        const id = await page.locator('.contactTable .contactTableBodyRow').locator('td').first().innerText();
+
+        // Open the contact details.
+        await Promise.all([
+            page.locator('.contactTable tr.contactTableBodyRow').click(),
+            page.waitForURL(`${BASE_URL}/contactDetails`)
+        ]);
+
+        // Handle the browser confirmation dialog – accept the deletion.
         page.on('dialog', async (dialog) => {
             await dialog.accept();
         });
-        await page.getByRole('button', { name: 'Delete Contact' }).click();
-        // await page.pause();
-        await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/contactList");
-        //if id is no longer in dom then it is deleted
+
+        // Click Delete and wait for redirect back to contact list.
+        await Promise.all([
+            page.getByRole('button', { name: 'Delete Contact' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`)
+        ]);
+
+        // Verify the contact is no longer present by its unique ID.
         await expect(page.locator('.contactTable td', { hasText: id })).toHaveCount(0);
-    })
-    test('should cancel delete', async ({ page }) => { 
+    });
+
+    test('should not delete contact when deletion is canceled', async ({ page }) => {
+        // Create a contact.
         const data = {
-                firstName: 'Brock',
-                lastName: 'Lee',
-                birthdate: '1990-01-01',
-                email: 'brock.lee@example.com',
-                phone: '1234567890',
-                street1: '123 Main St',
-                street2: 'Apt 4B',
-                city: 'Anytown',
-                stateProvince: 'Florida',
-                postalCode: '12345',
-                country: 'USA'
-            }
-            //create contact
+            firstName: 'Brock',
+            lastName: 'Lee',
+            birthdate: '1990-01-01',
+            email: 'brock.lee@example.com',
+            phone: '1234567890',
+            street1: '123 Main St',
+            street2: 'Apt 4B',
+            city: 'Anytown',
+            stateProvince: 'Florida',
+            postalCode: '12345',
+            country: 'USA'
+        };
         await addContact(page, data);
-        let id = await page.locator('.contactTable .contactTableBodyRow').locator('nth=-1').locator('td').first().innerText();
-        await page.locator('.contactTable').locator('nth=-1').click();
+
+        // Capture its ID.
+        const id = await page.locator('.contactTable tr.contactTableBodyRow').locator('td').first().innerText();
+
+        // Open contact details.
+        await Promise.all([
+            page.locator('.contactTable tr.contactTableBodyRow').click(),
+            page.waitForURL(`${BASE_URL}/contactDetails`)
+        ]);
+
+        // Handle the dialog – dismiss it (cancel deletion).
         page.on('dialog', async (dialog) => {
             await dialog.dismiss();
         });
+
+        // Attempt to delete but cancel.
         await page.getByRole('button', { name: 'Delete Contact' }).click();
-        // await page.pause();
-        await expect(page).toHaveURL("https://thinking-tester-contact-list.herokuapp.com/contactDetails");
-        await page.getByRole('button', { name: 'Return to Contact List' }).click();
-        // console.log(await page.locator('.contactTable td', { hasText: id }).innerText())
-        await expect(page.locator('.contactTable td', { hasText: id })).toHaveCount(1)
-    })
-    test('should delete one of multiple contacts and see if only that contact is removed from contact list', async ({ page }) => {
-        const data = [
-            {
-                firstName: 'Alice',
-                lastName: 'Smith',
-            },
-            {
-                firstName: 'Charles',
-                lastName: 'Anderson',
-            }
+
+        // Verify we remain on the details page (delete was canceled).
+        await expect(page).toHaveURL(`${BASE_URL}/contactDetails`);
+
+        // Return to contact list and verify the contact still exists.
+        await Promise.all([
+            page.getByRole('button', { name: 'Return to Contact List' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`)
+        ]);
+        await expect(page.locator('.contactTable td', { hasText: id })).toHaveCount(1);
+    });
+
+    test('should only delete the selected contact from multiple contacts', async ({ page }) => {
+        // Contacts to keep.
+        const keptContacts = [
+            { firstName: 'Alice', lastName: 'Smith' },
+            { firstName: 'Charles', lastName: 'Anderson' }
         ];
+        // Contact to delete.
         const toBeDeleted = {
             firstName: 'Bob',
             lastName: 'Johnson',
-        }
-        
-        for (const contact of [...data, toBeDeleted]) {
+        };
+
+        // Create all contacts.
+        for (const contact of [...keptContacts, toBeDeleted]) {
             await addContact(page, contact);
         }
-        let contactPointer = page.locator(
+
+        // Locate the specific row of the contact to delete.
+        const contactRow = page.locator(
             '.contactTable .contactTableBodyRow',
             {
                 has: page.getByRole(
@@ -618,16 +873,31 @@ test.describe('Delete Contact', () => {
                     { name: `${toBeDeleted.firstName} ${toBeDeleted.lastName}` }
                 )
             }
-        )
-        let id = await contactPointer.locator('td').first().innerText();
-        await contactPointer.click()
+        );
+
+        // Capture its ID.
+        const id = await contactRow.locator('td').first().innerText();
+
+        // Open its details.
+        await Promise.all([
+            contactRow.click(),
+            page.waitForURL(`${BASE_URL}/contactDetails`)
+        ]);
+
+        // Accept the deletion.
         page.on('dialog', async (dialog) => {
             await dialog.accept();
         });
-        await page.getByRole('button', { name: 'Delete Contact' }).click();
-        //check by id that it is deleted
+
+        // Delete and wait for redirect.
+        await Promise.all([
+            page.getByRole('button', { name: 'Delete Contact' }).click(),
+            page.waitForURL(`${BASE_URL}/contactList`)
+        ]);
+
+        // Verify the contact is gone by ID (most reliable).
         await expect(page.locator('.contactTable td', { hasText: id })).toHaveCount(0);
-        //check by name that it is deleted which also works unless there are duplicate names 
+        // Also verify by name (secondary check).
         await expect(page.locator(
             '.contactTable .contactTableBodyRow',
             {
@@ -638,11 +908,11 @@ test.describe('Delete Contact', () => {
             }
         )).toHaveCount(0);
 
-        //check that contact list only has data length amount
-        await expect(page.locator('.contactTable .contactTableBodyRow')).toHaveCount(data.length);
+        // Ensure only the kept contacts remain.
+        await expect(page.locator('.contactTable .contactTableBodyRow')).toHaveCount(keptContacts.length);
 
-        //check that the data on those are no one of the delete ones
-        for (const contact of data) {
+        // Verify each kept contact still exists.
+        for (const contact of keptContacts) {
             await expect(page.locator(
                 '.contactTable .contactTableBodyRow',
                 {
@@ -653,5 +923,5 @@ test.describe('Delete Contact', () => {
                 }
             )).toHaveCount(1);
         }
-    })
+    });
 });
